@@ -106,7 +106,7 @@ namespace CrossModCompatibilityTokens
 
             if (!modConfig.TryGetValue(configKey, out var configValue))
             {
-                configValue = ModEntry.GrabConfigValue(uniqueID, configKey)?.Value<string>();
+                configValue = ModEntry.GrabConfigValue(uniqueID, configKey)?.ToObject<string>();
                 modConfig.Add(configKey, configValue);
                 shouldUpdate = true;
             }
