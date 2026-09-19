@@ -1,0 +1,52 @@
+name: Release v1.1.3
+
+on:
+  push:
+    branches:
+      - "perf/ci-smoke"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up .NET 6
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "6.0.x"
+
+      - name: Checkout Stardew/SMAPI reference assemblies
+        run: git clone --depth 1 https://github.com/StardewModders/mod-reference-assemblies.git "$HOME/StardewValley"
+
+      - name: Build
+        run: |
+          dotnet build CrossModCompatibilityTokens/CrossModCompatibilityTokens.csproj \
+            --configuration Release \
+            -p:GamePath="$HOME/StardewValley"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          MOD_DIR="package/CrossModCompatibilityTokens"
+          mkdir -p "$MOD_DIR"
+          cp CrossModCompatibilityTokens/manifest.json "$MOD_DIR/manifest.json"
+          cp CrossModCompatibilityTokens/bin/Release/net6.0/CrossModCompatibilityTokens.dll "$MOD_DIR/CrossModCompatibilityTokens.dll"
+          (cd package && zip -r "../CrossModCompatibilityTokens-1.1.3.zip" CrossModCompatibilityTokens)
+
+      - name: Create v1.1.3 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.1.3 CrossModCompatibilityTokens-1.1.3.zip \
+            --repo "${{ github.repository }}" \
+            --target main \
+            --title "Cross-Mod Compatibility Tokens 1.1.3" \
+            --generate-notes
