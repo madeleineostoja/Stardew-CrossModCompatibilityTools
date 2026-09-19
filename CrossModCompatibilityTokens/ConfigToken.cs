@@ -3,15 +3,13 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using CrossModCompatibilityTokens.Helpers;
-using Newtonsoft.Json.Linq;
 
 namespace CrossModCompatibilityTokens
 {
     internal class ConfigToken
     {
         private readonly Dictionary<string, Dictionary<string, string?>> cachedValues = new();
-        private bool shouldUpdate = false;
+        private bool shouldUpdate;
 
         /// <summary>Get whether the token allows input arguments (e.g. an NPC name for a relationship token).</summary>
         /// <remarks>Default false.</remarks>
@@ -60,29 +58,20 @@ namespace CrossModCompatibilityTokens
             return true;
         }
 
-        /// <summary>Update the values when the context changes.</summary>
-        /// <returns>Returns whether the value changed, which may trigger patch updates.</returns>
+        /// <summary>
+        /// Notify Content Patcher once when a new config value is added to the session cache.
+        /// Config values are intentionally not polled after their first read; restart the game
+        /// after changing another mod's config to refresh CMCT values.
+        /// </summary>
         public bool UpdateContext()
         {
-            if (shouldUpdate)
+            if (!shouldUpdate)
             {
-                shouldUpdate = false;
-                return true;
+                return false;
             }
-            
-            foreach (var modConfig in cachedValues)
-            {
-                foreach (var (key, oldConfigValue) in modConfig.Value)
-                {
-                    var newConfigValue = ModEntry.GrabConfigValue(modConfig.Key, key)?.Value<string>();
-                    if (oldConfigValue == newConfigValue) continue;
 
-                    cachedValues[modConfig.Key][key] = newConfigValue;
-                    shouldUpdate = true;
-                }
-            }
-            
-            return shouldUpdate;
+            shouldUpdate = false;
+            return true;
         }
 
         /// <summary>Get whether the token is available for use.</summary>
@@ -95,7 +84,11 @@ namespace CrossModCompatibilityTokens
         /// <param name="input">The input arguments, if any.</param>
         public IEnumerable<string> GetValues(string? input)
         {
-            if (input is null) yield break;
+            if (input is null)
+            {
+                yield break;
+            }
+
             var split = input.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim()).ToArray();
             if (split.Length != 2)
             {
@@ -104,27 +97,26 @@ namespace CrossModCompatibilityTokens
 
             var uniqueID = split[0];
             var configKey = split[1];
-            if (!cachedValues.ContainsKey(uniqueID))
+
+            if (!cachedValues.TryGetValue(uniqueID, out var modConfig))
             {
-                cachedValues.Add(uniqueID, new Dictionary<string, string?>());
+                modConfig = new Dictionary<string, string?>();
+                cachedValues.Add(uniqueID, modConfig);
+            }
+
+            if (!modConfig.TryGetValue(configKey, out var configValue))
+            {
+                configValue = ModEntry.GrabConfigValue(uniqueID, configKey)?.Value<string>();
+                modConfig.Add(configKey, configValue);
                 shouldUpdate = true;
             }
 
-            if (!cachedValues[uniqueID].ContainsKey(configKey))
+            if (string.IsNullOrEmpty(configValue))
             {
-                cachedValues[uniqueID].Add(configKey, ModEntry.GrabConfigValue(uniqueID, configKey)?.Value<string>());
-                shouldUpdate = true;
+                yield break;
             }
 
-            var valueCheck = ModEntry.GrabConfigValue(uniqueID, configKey)?.Value<string>();
-            if (cachedValues[uniqueID][configKey] != valueCheck)
-            {
-                shouldUpdate = true;
-            }
-
-            var configValue = cachedValues[uniqueID][configKey];
-
-            foreach (var value in configValue?.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim())!)
+            foreach (var value in configValue.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim()))
             {
                 yield return value;
             }
