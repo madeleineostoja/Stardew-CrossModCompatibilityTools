@@ -1,0 +1,70 @@
+name: Build and release
+
+on:
+  push:
+    branches:
+      - main
+      - "perf/**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 6
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "6.0.x"
+
+      - name: Checkout Stardew/SMAPI reference assemblies
+        run: git clone --depth 1 https://github.com/StardewModders/mod-reference-assemblies.git "$HOME/StardewValley"
+
+      - name: Build
+        run: |
+          dotnet build CrossModCompatibilityTokens/CrossModCompatibilityTokens.csproj \
+            --configuration Release \
+            -p:GamePath="$HOME/StardewValley"
+
+      - name: Package mod
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 - <<'PY'
+import json
+with open("CrossModCompatibilityTokens/manifest.json", encoding="utf-8-sig") as f:
+    print(json.load(f)["Version"])
+PY
+)"
+          MOD_DIR="package/CrossModCompatibilityTokens"
+          mkdir -p "$MOD_DIR"
+          cp CrossModCompatibilityTokens/manifest.json "$MOD_DIR/manifest.json"
+          cp CrossModCompatibilityTokens/bin/Release/net6.0/CrossModCompatibilityTokens.dll "$MOD_DIR/CrossModCompatibilityTokens.dll"
+          (cd package && zip -r "../CrossModCompatibilityTokens-${VERSION}.zip" CrossModCompatibilityTokens)
+          echo "MOD_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "MOD_ZIP=CrossModCompatibilityTokens-${VERSION}.zip" >> "$GITHUB_ENV"
+
+      - name: Upload install-ready ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrossModCompatibilityTokens-${{ env.MOD_VERSION }}
+          path: ${{ env.MOD_ZIP }}
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" "${MOD_ZIP}" \
+            --title "Cross-Mod Compatibility Tokens ${MOD_VERSION}" \
+            --generate-notes
