@@ -39,12 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(python3 - <<'PY'
-import json
-with open("CrossModCompatibilityTokens/manifest.json", encoding="utf-8-sig") as f:
-    print(json.load(f)["Version"])
-PY
-)"
+          VERSION="$(python3 -c 'import json; print(json.load(open("CrossModCompatibilityTokens/manifest.json", encoding="utf-8-sig"))["Version"])')"
           MOD_DIR="package/CrossModCompatibilityTokens"
           mkdir -p "$MOD_DIR"
           cp CrossModCompatibilityTokens/manifest.json "$MOD_DIR/manifest.json"
