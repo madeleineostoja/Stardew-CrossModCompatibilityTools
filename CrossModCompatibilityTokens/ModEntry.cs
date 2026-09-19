@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using ContentPatcher;
-using ContentPatcher.Framework;
 using CrossModCompatibilityTokens.Helpers;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
@@ -69,10 +68,22 @@ namespace CrossModCompatibilityTokens
 
         private static void GrabTokenManager()
         {
-            var cpType = typeof(ContentPatcherAPI).Assembly.GetType("ContentPatcher.ModEntry");
             var cpMod = ModList["Pathoschild.ContentPatcher"];
-            var PerScreenManager = AccessTools.Field(cpType, "ScreenManager").GetValue(cpMod);
-            var screenManager = AccessTools.Property(PerScreenManager!.GetType(), "Value").GetValue(PerScreenManager);
+            var cpType = cpMod.GetType().Assembly.GetType("ContentPatcher.ModEntry");
+            if (cpType is null)
+            {
+                Log.Error("Could not find Content Patcher mod entry type.");
+                return;
+            }
+
+            var perScreenManager = AccessTools.Field(cpType, "ScreenManager")?.GetValue(cpMod);
+            if (perScreenManager is null)
+            {
+                Log.Error("Could not access Content Patcher screen manager.");
+                return;
+            }
+
+            var screenManager = AccessTools.Property(perScreenManager.GetType(), "Value").GetValue(perScreenManager);
             TokenManager = AccessTools.Property(screenManager?.GetType(), "TokenManager")?.GetValue(screenManager);
             LocalTokens = AccessTools.Field(TokenManager?.GetType(), "LocalTokens")?.GetValue(TokenManager);
         }
